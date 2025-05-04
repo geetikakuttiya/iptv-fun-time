@@ -323,6 +323,12 @@ app.post('/api/admin/update-password', express.json(), checkAuth, async (req, re
     }
 });
 
+// empty the selected channels
+app.get('/api/admin/clear-selected', checkAuth, (req, res) => {
+    selectedChannels.length = 0; // Clear the array
+    res.json({ message: 'Selected channels cleared.' });
+});
+
 app.get("/password", (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'password.html'));
 })

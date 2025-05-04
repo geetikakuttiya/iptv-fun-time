@@ -5,7 +5,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Selected Channels</title>
-    <!-- <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script> -->
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -141,7 +140,7 @@
         }
 
         .hidden {
-            display: none;
+            display: none !important;
         }
 
         /* Player container */
@@ -161,6 +160,116 @@
             width: 100%;
             height: 400px;
             border: none;
+        }
+        
+        /* Admin controls */
+        .admin-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .admin-controls .channel-count {
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .clear-button {
+            background-color: #f44336;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .clear-button:hover {
+            background-color: #d32f2f;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .confirmation-dialog {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            /* Add these properties for better animation */
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s, visibility 0.3s;
+        }
+
+        .confirmation-dialog:not(.hidden) {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .confirmation-content {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            max-width: 400px;
+            text-align: center;
+            /* Add a slight animation */
+            transform: scale(0.8);
+            transition: transform 0.3s;
+        }
+
+        .confirmation-dialog:not(.hidden) .confirmation-content {
+            transform: scale(1);
+        }
+        
+        .confirmation-buttons {
+            margin-top: 20px;
+        }
+        
+        .confirm-btn {
+            background-color: #f44336;
+            color: white;
+            margin-right: 10px;
+        }
+        
+        .cancel-btn {
+            background-color: #ccc;
+        }
+        
+        .embed-container {
+            position: relative;
+            padding-bottom: 56.25%;
+            height: 0;
+            overflow: hidden;
+            width: 100%;
+        }
+        
+        .embed-container iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
         }
     </style>
 </head>
@@ -187,13 +296,30 @@
         <div id="noChannels" class="message hidden">
             No channels have been selected yet. Go to the <a href="/">Channel Selector</a> to add channels.
         </div>
+        
+        <div id="adminControls" class="admin-controls hidden">
+            <div class="channel-count">Total Selected: <span id="channelCountDisplay">0</span></div>
+            <button id="clearBtn" class="clear-button">Clear All Channels</button>
+        </div>
 
         <div id="channelList" class="channel-list"></div>
 
         <div id="playerContainer" class="player-container hidden">
             <div id="playerInfo" class="player-info"></div>
-            <!-- <video id="video" controls width="640" height="360"></video> -->
-            <!-- <iframe id="playerFrame" class="player-frame" allowfullscreen></iframe> -->
+            <div class="embed-container">
+                <iframe id="videoPlayer" frameborder="0" allowfullscreen></iframe>
+            </div>
+        </div>
+    </div>
+    
+    <div id="confirmationDialog" class="confirmation-dialog hidden">
+        <div class="confirmation-content">
+            <h3>Clear All Channels?</h3>
+            <p>This will remove all selected channels. This action cannot be undone.</p>
+            <div class="confirmation-buttons">
+                <button id="confirmClearBtn" class="clear-button confirm-btn">Clear All</button>
+                <button id="cancelClearBtn" class="auth-button cancel-btn">Cancel</button>
+            </div>
         </div>
     </div>
 
@@ -207,7 +333,13 @@
         const channelList = document.getElementById('channelList');
         const playerContainer = document.getElementById('playerContainer');
         const playerInfo = document.getElementById('playerInfo');
-        const playerFrame = document.getElementById('playerFrame');
+        const videoPlayer = document.getElementById('videoPlayer');
+        const adminControls = document.getElementById('adminControls');
+        const channelCountDisplay = document.getElementById('channelCountDisplay');
+        const clearBtn = document.getElementById('clearBtn');
+        const confirmationDialog = document.getElementById('confirmationDialog');
+        const confirmClearBtn = document.getElementById('confirmClearBtn');
+        const cancelClearBtn = document.getElementById('cancelClearBtn');
 
         let selectedChannels = [];
 
@@ -217,6 +349,7 @@
             if (token) {
                 authPanel.classList.add('hidden');
                 channelsPanel.classList.remove('hidden');
+                adminControls.classList.remove('hidden');
                 loadSelectedChannels();
             }
         }
@@ -247,6 +380,7 @@
                     // Switch to channels panel
                     authPanel.classList.add('hidden');
                     channelsPanel.classList.remove('hidden');
+                    adminControls.classList.remove('hidden');
 
                     // Load selected channels
                     loadSelectedChannels();
@@ -270,13 +404,16 @@
                 const response = await fetch('/api/selected');
                 if (response.ok) {
                     selectedChannels = await response.json();
+                    channelCountDisplay.textContent = selectedChannels.length;
 
                     if (selectedChannels.length === 0) {
                         noChannels.classList.remove('hidden');
                         channelList.classList.add('hidden');
+                        adminControls.classList.add('hidden');
                     } else {
                         noChannels.classList.add('hidden');
                         channelList.classList.remove('hidden');
+                        adminControls.classList.remove('hidden');
                         renderChannels();
                     }
                 } else {
@@ -330,9 +467,8 @@
             });
         }
 
-        // Play a channel
+        // Play a channel - updated to use direct iframe approach
         async function playChannel(channel) {
-            const video = document.getElementById('video');
             try {
                 const token = localStorage.getItem('auth_token');
                 if (!token) {
@@ -362,19 +498,128 @@
                     throw new Error('Failed to start stream');
                 }
 
-                // Update the player
+                // Update the player info
                 playerInfo.textContent = `Now Playing: ${channel.name}`;
-
+                
+                // Set the iframe source to the /stream endpoint
+                videoPlayer.src = `/stream`;
+                
+                // Show the player container
                 playerContainer.classList.remove('hidden');
+                
+                // Scroll to player
+                playerContainer.scrollIntoView({ behavior: 'smooth' });
 
             } catch (err) {
                 console.error('Error playing channel:', err);
                 alert('Error playing channel: ' + err.message);
             }
         }
+        
+        // Clear all channels handler
+        clearBtn.addEventListener('click', () => {
+            if (selectedChannels.length > 0) {
+                confirmationDialog.classList.remove('hidden');
+            } else {
+                alert('No channels to clear.');
+            }
+        });
+        
+        // Cancel clear operation
+        cancelClearBtn.addEventListener('click', (e) => {
+            e.preventDefault(); // Prevent any default button behavior
+            e.stopPropagation(); // Stop event from bubbling up
+            confirmationDialog.classList.add('hidden');
+        });
+        
+        // Also add a click handler to close the dialog when clicking outside the content
+        confirmationDialog.addEventListener('click', (e) => {
+            // Only close if clicking the backdrop (not the content)
+            if (e.target === confirmationDialog) {
+                confirmationDialog.classList.add('hidden');
+            }
+        });
+        
+        // Add escape key support to close the dialog
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !confirmationDialog.classList.contains('hidden')) {
+                confirmationDialog.classList.add('hidden');
+            }
+        });
+        
+        // Confirm clear operation
+        confirmClearBtn.addEventListener('click', async () => {
+            try {
+                const token = localStorage.getItem('auth_token');
+                if (!token) {
+                    authPanel.classList.remove('hidden');
+                    channelsPanel.classList.add('hidden');
+                    return;
+                }
+                
+                // Change button text to show loading
+                confirmClearBtn.innerHTML = '<span class="loading"></span> Clearing...';
+                confirmClearBtn.disabled = true;
+                
+                const response = await fetch('/api/admin/clear-selected', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    if (response.status === 401 || response.status === 403) {
+                        localStorage.removeItem('auth_token');
+                        authPanel.classList.remove('hidden');
+                        channelsPanel.classList.add('hidden');
+                        confirmationDialog.classList.add('hidden');
+                        authError.textContent = 'Session expired. Please login again.';
+                        authError.classList.remove('hidden');
+                        return;
+                    }
+                    throw new Error('Failed to clear channels');
+                }
+                
+                const result = await response.json();
+                
+                // Hide the confirmation dialog
+                confirmationDialog.classList.add('hidden');
+                
+                // Reset the confirmClearBtn
+                confirmClearBtn.innerHTML = 'Clear All';
+                confirmClearBtn.disabled = false;
+                
+                // Hide the player if it's visible
+                playerContainer.classList.add('hidden');
+                
+                // Reload the channels (which should now be empty)
+                loadSelectedChannels();
+                
+                // Show a success message
+                alert(result.message);
+                
+            } catch (err) {
+                console.error('Error clearing channels:', err);
+                alert('Error clearing channels: ' + err.message);
+                
+                // Reset the confirmClearBtn
+                confirmClearBtn.innerHTML = 'Clear All';
+                confirmClearBtn.disabled = false;
+                
+                // Hide the confirmation dialog
+                confirmationDialog.classList.add('hidden');
+            }
+        });
 
         // Check authentication on page load
         checkAuthentication();
+        
+        // Add keypress handlers for accessibility
+        passwordInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                loginBtn.click();
+            }
+        });
     </script>
 </body>
 
