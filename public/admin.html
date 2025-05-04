@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPTV Admin</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            border: 1px solid #ccc;
+            padding: 20px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], input[type="password"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .error {
+            color: red;
+            margin-top: 10px;
+        }
+        .success {
+            color: green;
+            margin-top: 10px;
+        }
+        .hidden {
+            display: none;
+        }
+        .nav {
+            margin-bottom: 20px;
+        }
+        .nav a {
+            color: #0066cc;
+            text-decoration: none;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <a href="/">Back to Channel Selector</a>
+    </div>
+    
+    <h1>IPTV Admin Panel</h1>
+    
+    <div id="authPanel" class="container">
+        <h2>Authentication Required</h2>
+        <div class="form-group">
+            <label for="password">Admin Password:</label>
+            <input type="password" id="password" placeholder="Enter admin password">
+        </div>
+        <button id="loginBtn">Login</button>
+        <p id="authError" class="error hidden"></p>
+    </div>
+    
+    <div id="adminPanel" class="container hidden">
+        <h2>M3U URL Management</h2>
+        <div class="form-group">
+            <label for="currentUrl">Current M3U URL:</label>
+            <input type="text" id="currentUrl" readonly>
+        </div>
+        <div class="form-group">
+            <label for="newUrl">New M3U URL:</label>
+            <input type="text" id="newUrl" placeholder="Enter new M3U URL">
+        </div>
+        <button id="updateUrlBtn">Update URL</button>
+        <p id="updateSuccess" class="success hidden"></p>
+        <p id="updateError" class="error hidden"></p>
+    </div>
+    
+    <script>
+        const authPanel = document.getElementById('authPanel');
+        const adminPanel = document.getElementById('adminPanel');
+        const passwordInput = document.getElementById('password');
+        const loginBtn = document.getElementById('loginBtn');
+        const authError = document.getElementById('authError');
+        const currentUrlInput = document.getElementById('currentUrl');
+        const newUrlInput = document.getElementById('newUrl');
+        const updateUrlBtn = document.getElementById('updateUrlBtn');
+        const updateSuccess = document.getElementById('updateSuccess');
+        const updateError = document.getElementById('updateError');
+        
+        // Check if we already have a token
+        function checkAuthentication() {
+            const token = localStorage.getItem('auth_token');
+            if (token) {
+                authPanel.classList.add('hidden');
+                adminPanel.classList.remove('hidden');
+                loadCurrentUrl();
+            }
+        }
+        
+        // Load the current M3U URL
+        async function loadCurrentUrl() {
+            try {
+                const response = await fetch('/api/admin/m3u-url', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    currentUrlInput.value = data.url;
+                } else {
+                    // If token expired, go back to login
+                    if (response.status === 401 || response.status === 403) {
+                        localStorage.removeItem('auth_token');
+                        authPanel.classList.remove('hidden');
+                        adminPanel.classList.add('hidden');
+                    }
+                }
+            } catch (err) {
+                console.error('Error loading current URL:', err);
+            }
+        }
+        
+        // Login handler
+        loginBtn.addEventListener('click', async () => {
+            const password = passwordInput.value;
+            
+            if (!password) {
+                authError.textContent = 'Password is required';
+                authError.classList.remove('hidden');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/auth', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ password })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    localStorage.setItem('auth_token', data.token);
+                    
+                    // Switch to admin panel
+                    authPanel.classList.add('hidden');
+                    adminPanel.classList.remove('hidden');
+                    
+                    // Load current URL
+                    loadCurrentUrl();
+                    
+                    // Clear error if any
+                    authError.classList.add('hidden');
+                } else {
+                    authError.textContent = 'Invalid password';
+                    authError.classList.remove('hidden');
+                }
+            } catch (err) {
+                authError.textContent = 'Authentication error';
+                authError.classList.remove('hidden');
+                console.error('Auth error:', err);
+            }
+        });
+        
+        // Update URL handler
+        updateUrlBtn.addEventListener('click', async () => {
+            const newUrl = newUrlInput.value;
+            
+            if (!newUrl) {
+                updateError.textContent = 'New URL is required';
+                updateError.classList.remove('hidden');
+                updateSuccess.classList.add('hidden');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/admin/update-m3u-url', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+                    },
+                    body: JSON.stringify({ newUrl })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    currentUrlInput.value = data.currentUrl;
+                    newUrlInput.value = '';
+                    
+                    updateSuccess.textContent = data.message;
+                    updateSuccess.classList.remove('hidden');
+                    updateError.classList.add('hidden');
+                } else {
+                    if (response.status === 401 || response.status === 403) {
+                        localStorage.removeItem('auth_token');
+                        authPanel.classList.remove('hidden');
+                        adminPanel.classList.add('hidden');
+                        return;
+                    }
+                    
+                    const error = await response.json();
+                    updateError.textContent = error.error || 'Failed to update URL';
+                    updateError.classList.remove('hidden');
+                    updateSuccess.classList.add('hidden');
+                }
+            } catch (err) {
+                updateError.textContent = 'Error updating URL';
+                updateError.classList.remove('hidden');
+                updateSuccess.classList.add('hidden');
+                console.error('Update error:', err);
+            }
+        });
+        
+        // Check authentication on page load
+        checkAuthentication();
+    </script>
+</body>
+</html>

@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>IPTV Channel Selector</title>
+    <style>
+        body {
+            font-family: Arial;
+        }
+
+        .channel {
+            margin: 10px 0;
+            border-bottom: 1px solid #ccc;
+            padding: 5px;
+        }
+
+        .channel img {
+            width: 50px;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>IPTV Channel Selector</h1>
+    <p id="selectedCount">Selected: 0</p>
+
+    <input type="text" id="search" placeholder="Search..." />
+    <select id="groupFilter"></select>
+    <button onclick="loadChannels()">Search</button>
+
+    <div id="channels"></div>
+    <button onclick="submitSelection()">Submit Selected</button>
+
+    <script>
+        let selected = [];
+        
+
+        async function loadGroups() {
+            const res = await fetch('/api/groups');
+            const groups = await res.json();
+            const sel = document.getElementById('groupFilter');
+            sel.innerHTML = '<option value="">All Groups</option>' +
+                groups.map(g => `<option value="${g}">${g}</option>`).join('');
+        }
+
+        async function loadChannels() {
+            const query = document.getElementById('search').value;
+            const group = document.getElementById('groupFilter').value;
+            const res = await fetch(`/api/channels/search?q=${encodeURIComponent(query)}&group=${encodeURIComponent(group)}&limit=50`);
+            const json = await res.json();
+
+            const container = document.getElementById('channels');
+            container.innerHTML = json.data.map(c => `
+        <div class="channel">
+          <input type="checkbox" value="${c.id}" data-channel='${JSON.stringify(c)}' onchange="toggleChannel(this)" />
+          <img src="${c.icon_url}" />
+          <strong>${c.name}</strong> — ${c.group_title}
+        </div>
+      `).join('');
+        }
+
+        function toggleChannel(checkbox) {
+            const ch = JSON.parse(checkbox.getAttribute('data-channel'));
+            document.getElementById('selectedCount').textContent = `Selected: ${selected.length}`;
+
+            if (checkbox.checked) {
+                if (!selected.find(c => c.id === ch.id)) selected.push(ch);
+            } else {
+                selected = selected.filter(c => c.id !== ch.id);
+            }
+        }
+
+
+        async function submitSelection() {
+            // Check if we already have a token in localStorage
+            const token = localStorage.getItem('auth_token');
+            
+            if (!token) {
+                // If no token exists, prompt for password
+                const password = prompt("Enter the Password to submit the selected channels:");
+                if (!password) return; // User canceled the prompt
+                
+                // Verify password with server
+                try {
+                    const authResponse = await fetch('/api/auth', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ password }),
+                    });
+                    
+                    if (!authResponse.ok) {
+                        alert('Incorrect password. Please try again.');
+                        return;
+                    }
+                    
+                    const authResult = await authResponse.json();
+                    // Store token for future requests
+                    localStorage.setItem('auth_token', authResult.token);
+                } catch (err) {
+                    alert('Authentication failed. Please try again.');
+                    return;
+                }
+            }
+            
+            // Now continue with submitting channels with the token
+            try {
+                const res = await fetch('/api/selected', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+                    },
+                    body: JSON.stringify({ channels: selected }),
+                });
+                
+                if (!res.ok) {
+                    // If authorization fails, clear token and retry
+                    if (res.status === 401 || res.status === 403) {
+                        localStorage.removeItem('auth_token');
+                        alert('Session expired. Please try again.');
+                        return submitSelection(); // Retry submission
+                    }
+                    throw new Error('Failed to submit channels');
+                }
+                
+                const result = await res.json();
+                alert(result.message + ' Total selected: ' + result.selectedCount);
+            } catch (err) {
+                alert('Error submitting channels: ' + err.message);
+            }
+        }
+
+        loadGroups();
+        loadChannels();
+    </script>
+</body>
+
+</html>

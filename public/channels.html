@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Selected Channels</title>
+    <!-- <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script> -->
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+
+        .channel-list {
+            margin-top: 20px;
+        }
+
+        .channel-item {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+            transition: background-color 0.2s;
+        }
+
+        .channel-item:hover {
+            background-color: #f9f9f9;
+        }
+
+        .channel-icon {
+            width: 60px;
+            height: 60px;
+            object-fit: contain;
+            margin-right: 15px;
+            background-color: #f5f5f5;
+            border-radius: 5px;
+        }
+
+        .channel-details {
+            flex-grow: 1;
+        }
+
+        .channel-name {
+            font-weight: bold;
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
+
+        .channel-group {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .play-button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+        }
+
+        .play-button:hover {
+            background-color: #45a049;
+        }
+
+        .play-icon {
+            margin-right: 5px;
+        }
+
+        .message {
+            padding: 20px;
+            text-align: center;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+
+        .auth-panel {
+            background-color: #f5f5f5;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        .auth-button {
+            background-color: #2196F3;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .error {
+            color: red;
+            margin-top: 10px;
+        }
+
+        .nav-links {
+            margin-bottom: 20px;
+        }
+
+        .nav-links a {
+            margin-right: 15px;
+            color: #2196F3;
+            text-decoration: none;
+        }
+
+        .nav-links a:hover {
+            text-decoration: underline;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        /* Player container */
+        .player-container {
+            margin-top: 20px;
+            padding: 20px;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+        }
+
+        .player-info {
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+
+        .player-frame {
+            width: 100%;
+            height: 400px;
+            border: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="nav-links">
+        <a href="/">Back to Channel Selector</a>
+        <a href="/admin.html">Admin Panel</a>
+    </div>
+
+    <h1>Selected Channels</h1>
+
+    <div id="authPanel" class="auth-panel">
+        <h2>Authentication Required</h2>
+        <div class="form-group">
+            <label for="password">Password:</label>
+            <input type="password" id="password" placeholder="Enter password to access channel playback">
+        </div>
+        <button id="loginBtn" class="auth-button">Login</button>
+        <p id="authError" class="error hidden"></p>
+    </div>
+
+    <div id="channelsPanel" class="hidden">
+        <div id="noChannels" class="message hidden">
+            No channels have been selected yet. Go to the <a href="/">Channel Selector</a> to add channels.
+        </div>
+
+        <div id="channelList" class="channel-list"></div>
+
+        <div id="playerContainer" class="player-container hidden">
+            <div id="playerInfo" class="player-info"></div>
+            <!-- <video id="video" controls width="640" height="360"></video> -->
+            <!-- <iframe id="playerFrame" class="player-frame" allowfullscreen></iframe> -->
+        </div>
+    </div>
+
+    <script>
+        const authPanel = document.getElementById('authPanel');
+        const channelsPanel = document.getElementById('channelsPanel');
+        const passwordInput = document.getElementById('password');
+        const loginBtn = document.getElementById('loginBtn');
+        const authError = document.getElementById('authError');
+        const noChannels = document.getElementById('noChannels');
+        const channelList = document.getElementById('channelList');
+        const playerContainer = document.getElementById('playerContainer');
+        const playerInfo = document.getElementById('playerInfo');
+        const playerFrame = document.getElementById('playerFrame');
+
+        let selectedChannels = [];
+
+        // Check if we already have a token
+        function checkAuthentication() {
+            const token = localStorage.getItem('auth_token');
+            if (token) {
+                authPanel.classList.add('hidden');
+                channelsPanel.classList.remove('hidden');
+                loadSelectedChannels();
+            }
+        }
+
+        // Login handler
+        loginBtn.addEventListener('click', async () => {
+            const password = passwordInput.value;
+
+            if (!password) {
+                authError.textContent = 'Password is required';
+                authError.classList.remove('hidden');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/auth', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ password })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    localStorage.setItem('auth_token', data.token);
+
+                    // Switch to channels panel
+                    authPanel.classList.add('hidden');
+                    channelsPanel.classList.remove('hidden');
+
+                    // Load selected channels
+                    loadSelectedChannels();
+
+                    // Clear error if any
+                    authError.classList.add('hidden');
+                } else {
+                    authError.textContent = 'Invalid password';
+                    authError.classList.remove('hidden');
+                }
+            } catch (err) {
+                authError.textContent = 'Authentication error';
+                authError.classList.remove('hidden');
+                console.error('Auth error:', err);
+            }
+        });
+
+        // Load selected channels
+        async function loadSelectedChannels() {
+            try {
+                const response = await fetch('/api/selected');
+                if (response.ok) {
+                    selectedChannels = await response.json();
+
+                    if (selectedChannels.length === 0) {
+                        noChannels.classList.remove('hidden');
+                        channelList.classList.add('hidden');
+                    } else {
+                        noChannels.classList.add('hidden');
+                        channelList.classList.remove('hidden');
+                        renderChannels();
+                    }
+                } else {
+                    console.error('Error loading channels:', response.statusText);
+                }
+            } catch (err) {
+                console.error('Error loading channels:', err);
+            }
+        }
+
+        // Render channels list
+        function renderChannels() {
+            channelList.innerHTML = '';
+
+            selectedChannels.forEach(channel => {
+                const channelItem = document.createElement('div');
+                channelItem.className = 'channel-item';
+
+                const icon = document.createElement('img');
+                icon.className = 'channel-icon';
+                icon.src = channel.icon_url || 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+PHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiNlZWUiLz48dGV4dCB4PSI1MCIgeT0iNTAiIGZvbnQtc2l6ZT0iMTgiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGFsaWdubWVudC1iYXNlbGluZT0ibWlkZGxlIiBmb250LWZhbWlseT0ibW9ub3NwYWNlLCBzYW5zLXNlcmlmIiBmaWxsPSIjOTk5Ij5ObyBJbWFnZTwvdGV4dD48L3N2Zz4=';
+                icon.alt = channel.name;
+                icon.onerror = function () {
+                    this.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+PHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiNlZWUiLz48dGV4dCB4PSI1MCIgeT0iNTAiIGZvbnQtc2l6ZT0iMTgiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGFsaWdubWVudC1iYXNlbGluZT0ibWlkZGxlIiBmb250LWZhbWlseT0ibW9ub3NwYWNlLCBzYW5zLXNlcmlmIiBmaWxsPSIjOTk5Ij5ObyBJbWFnZTwvdGV4dD48L3N2Zz4=';
+                };
+
+                const details = document.createElement('div');
+                details.className = 'channel-details';
+
+                const name = document.createElement('div');
+                name.className = 'channel-name';
+                name.textContent = channel.name;
+
+                const group = document.createElement('div');
+                group.className = 'channel-group';
+                group.textContent = channel.group_title || 'Uncategorized';
+
+                details.appendChild(name);
+                details.appendChild(group);
+
+                const playButton = document.createElement('button');
+                playButton.className = 'play-button';
+                playButton.innerHTML = '<span class="play-icon">▶</span> Play';
+                playButton.addEventListener('click', () => playChannel(channel));
+
+                channelItem.appendChild(icon);
+                channelItem.appendChild(details);
+                channelItem.appendChild(playButton);
+
+                channelList.appendChild(channelItem);
+            });
+        }
+
+        // Play a channel
+        async function playChannel(channel) {
+            const video = document.getElementById('video');
+            try {
+                const token = localStorage.getItem('auth_token');
+                if (!token) {
+                    authError.textContent = 'Authentication required';
+                    authError.classList.remove('hidden');
+                    authPanel.classList.remove('hidden');
+                    channelsPanel.classList.add('hidden');
+                    return;
+                }
+
+                // First, request the /stream/:id endpoint to set the current channel
+                const response = await fetch(`/stream/${channel.id}`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    if (response.status === 401 || response.status === 403) {
+                        localStorage.removeItem('auth_token');
+                        authPanel.classList.remove('hidden');
+                        channelsPanel.classList.add('hidden');
+                        authError.textContent = 'Session expired. Please login again.';
+                        authError.classList.remove('hidden');
+                        return;
+                    }
+                    throw new Error('Failed to start stream');
+                }
+
+                // Update the player
+                playerInfo.textContent = `Now Playing: ${channel.name}`;
+
+                playerContainer.classList.remove('hidden');
+
+            } catch (err) {
+                console.error('Error playing channel:', err);
+                alert('Error playing channel: ' + err.message);
+            }
+        }
+
+        // Check authentication on page load
+        checkAuthentication();
+    </script>
+</body>
+
+</html>
