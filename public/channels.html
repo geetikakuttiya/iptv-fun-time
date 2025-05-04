@@ -307,7 +307,7 @@
         <div id="playerContainer" class="player-container hidden">
             <div id="playerInfo" class="player-info"></div>
             <div class="embed-container">
-                <iframe id="videoPlayer" frameborder="0" allowfullscreen></iframe>
+                <!-- <iframe id="videoPlayer" frameborder="0" allowfullscreen></iframe> -->
             </div>
         </div>
     </div>
@@ -333,7 +333,7 @@
         const channelList = document.getElementById('channelList');
         const playerContainer = document.getElementById('playerContainer');
         const playerInfo = document.getElementById('playerInfo');
-        const videoPlayer = document.getElementById('videoPlayer');
+        // const videoPlayer = document.getElementById('videoPlayer');
         const adminControls = document.getElementById('adminControls');
         const channelCountDisplay = document.getElementById('channelCountDisplay');
         const clearBtn = document.getElementById('clearBtn');
@@ -502,13 +502,13 @@
                 playerInfo.textContent = `Now Playing: ${channel.name}`;
                 
                 // Set the iframe source to the /stream endpoint
-                videoPlayer.src = `/stream`;
+                // videoPlayer.src = `/stream`;
                 
                 // Show the player container
                 playerContainer.classList.remove('hidden');
                 
                 // Scroll to player
-                playerContainer.scrollIntoView({ behavior: 'smooth' });
+                // playerContainer.scrollIntoView({ behavior: 'smooth' });
 
             } catch (err) {
                 console.error('Error playing channel:', err);
