@@ -34,6 +34,12 @@ if (!PASSWORD_HASH) {
 
 let M3U_URL = 'http://wanicelife.com:8880/get.php?username=D12m4389&password=60388773&type=m3u_plus&output=m3u8';
 // const M3U_URL = 'http://hdhd.tk:80/get.php?username=Cdegale&password=022275&type=m3u_plus&output=m3u8';
+
+app.get("/", (req, res) => {
+    // res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.json({ message: 'working' });
+})
+
 app.use(express.static('public'));
 app.use(cors());
 app.use(compression());
@@ -323,6 +329,11 @@ app.post('/api/admin/update-password', express.json(), checkAuth, async (req, re
     }
 });
 
+app.get("/browse", (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+})
+
+
 // empty the selected channels
 app.get('/api/admin/clear-selected', checkAuth, (req, res) => {
     selectedChannels.length = 0; // Clear the array
@@ -336,9 +347,14 @@ app.get("/password", (req, res) => {
 app.get("/admin", (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 })
+
 app.get("/channels", (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'channels.html'));
 })
+
+app.use((req, res) => {
+    res.status(404).json({ error: 'Not Found' });
+});
 
 app.listen(PORT, () => {
     console.log(`Streaming server running at http://localhost:${PORT}`);
