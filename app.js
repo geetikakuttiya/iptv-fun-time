@@ -15,7 +15,7 @@ const { checkAuth } = require('./middleware/auth');
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 let watchIndex = 0;
 const selectedChannels = [];
 let currentChannel = null;
