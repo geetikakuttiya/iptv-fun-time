@@ -16,6 +16,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const PUBLIC_URL = process.env.PUBLIC_URL || 'http://localhost';
 let watchIndex = 0;
 const selectedChannels = [];
 let currentChannel = null;
@@ -98,10 +99,49 @@ async function parseM3UStreamed(url) {
     return channels;
 }
 
+// Add these variables at the top of your app.js file, after your other declarations
+let cachedChannels = null;
+let lastFetchTime = null;
+const CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
+
+// Replace your parseM3UStreamed function with this cached version
+async function getChannels() {
+    const currentTime = Date.now();
+    
+    // Use cached data if it exists and is not expired
+    if (cachedChannels && lastFetchTime && (currentTime - lastFetchTime < CACHE_DURATION)) {
+        console.log('Using cached channel data');
+        return cachedChannels;
+    }
+    
+    console.log('Fetching fresh channel data from M3U_URL');
+    try {
+        // Fetch fresh data
+        cachedChannels = await parseM3UStreamed(M3U_URL);
+        lastFetchTime = currentTime;
+        return cachedChannels;
+    } catch (error) {
+        // If there's an error but we have cached data, use it even if expired
+        if (cachedChannels) {
+            console.warn('Error fetching fresh data, using expired cache:', error.message);
+            return cachedChannels;
+        }
+        // No cache available, must throw the error
+        throw error;
+    }
+}
+
+// Add a function to manually invalidate the cache (useful for admin operations)
+function invalidateCache() {
+    cachedChannels = null;
+    lastFetchTime = null;
+    console.log('Channel cache invalidated');
+}
+
 // Route to return parsed channels
 app.get('/api/channels', async (req, res) => {
     try {
-        const channels = await parseM3UStreamed(M3U_URL);
+        const channels = await getChannels();
 
         // Pagination logic
         const page = parseInt(req.query.page) || 1;
@@ -126,7 +166,7 @@ app.get('/api/channels', async (req, res) => {
 // Route: Get all unique group titles
 app.get('/api/groups', async (req, res) => {
     try {
-        const channels = await parseM3UStreamed(M3U_URL);
+        const channels = await getChannels();
         const groups = [...new Set(channels.map(c => c.group_title).filter(Boolean))];
         res.json(groups);
     } catch (err) {
@@ -139,7 +179,7 @@ app.get('/api/groups', async (req, res) => {
 app.get('/api/channels/by-group/:group', async (req, res) => {
     try {
         const groupParam = decodeURIComponent(req.params.group).toLowerCase();
-        const channels = await parseM3UStreamed(M3U_URL);
+        const channels = await getChannels();
 
         const filtered = channels.filter(c =>
             c.group_title && c.group_title.toLowerCase() === groupParam
@@ -160,7 +200,7 @@ app.get('/api/channels/by-group/:group', async (req, res) => {
 app.get('/api/channels/search', async (req, res) => {
     try {
       const { q = '', group = '', page = 1, limit = 50 } = req.query;
-      const channels = await parseM3UStreamed(M3U_URL);
+      const channels = await getChannels();
   
       const filtered = channels.filter(c => {
         const matchesSearch = c.name.toLowerCase().includes(q.toLowerCase());
@@ -274,6 +314,9 @@ app.post('/api/admin/update-m3u-url', express.json(), checkAuth, (req, res) => {
         // Update the M3U_URL
         M3U_URL = newUrl;
         
+        // Invalidate the cache so next request will fetch fresh data
+        invalidateCache();
+        
         return res.json({ 
             success: true, 
             message: 'M3U URL updated successfully',
@@ -352,10 +395,27 @@ app.get("/channels", (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'channels.html'));
 })
 
+app.get('/api/admin/refresh-cache', checkAuth, async (req, res) => {
+    try {
+        invalidateCache();
+        await getChannels(); // This will trigger a fresh fetch
+        res.json({ 
+            success: true, 
+            message: 'Channel cache refreshed successfully',
+            channelCount: cachedChannels.length
+        });
+    } catch (err) {
+        console.error('Cache refresh error:', err.message);
+        res.status(500).json({ error: 'Failed to refresh channel cache.' });
+    }
+});
+
 app.use((req, res) => {
     res.status(404).json({ error: 'Not Found' });
 });
 
 app.listen(PORT, () => {
-    console.log(`Streaming server running at http://localhost:${PORT}`);
+    console.log(`Streaming server running at ${process.env.NODE_ENV === 'production' ? PUBLIC_URL : `${PUBLIC_URL}:${PORT}`}`);
+
+    console.log('Server has started successfully.');
 });
